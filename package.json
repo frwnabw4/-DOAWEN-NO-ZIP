@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "prisma:dev": "prisma migrate dev --name init && prisma generate"
+    "prisma:dev": "prisma migrate dev --name init && prisma generate",
+    "build": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.674.0",
