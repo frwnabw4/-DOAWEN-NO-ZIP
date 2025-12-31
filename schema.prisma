@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  POET
+  READER
+  PUBLISHER
+}
+
+enum PoemType {
+  FUSHA
+  NABA
+  FREE
+  PROSE
+}
+
+enum Category {
+  GHAZAL
+  FAKHR
+  RITHA
+  HIKMA
+  OTHER
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String?  @unique
+  passwordHash String
+  bio          String?  @db.Text
+  userType     UserType @default(POET)
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posts        Post[]
+  comments     Comment[]
+  likes        Like[]
+  followers    Follow[] @relation("followers")
+  following    Follow[] @relation("following")
+  notifications Notification[] @relation("recipient")
+  actions       Notification[] @relation("actor")
+  devices      Device[]
+  stories      Story[]
+  saves        Save[]
+}
+
+model Follow {
+  followerId String
+  followingId String
+  createdAt DateTime @default(now())
+
+  follower  User @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  authorId    String
+  title       String?
+  content     String    @db.Text
+  poemType    PoemType
+  category    Category?
+  imageUrl    String?
+  audioUrl    String?
+  videoUrl    String?
+  visualTemplateId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  published   Boolean   @default(true)
+
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likes    Like[]
+  tags     PostTag[]
+  saves    Save[]
+  notifications Notification[]
+
+  @@index([authorId, createdAt])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([postId, createdAt])
+}
+
+model Like {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Save {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Notification {
+  id        String            @id @default(cuid())
+  userId    String            // recipient
+  actorId   String
+  type      NotificationType
+  postId    String?
+  commentId String?
+  createdAt DateTime          @default(now())
+  readAt    DateTime?
+
+  recipient User     @relation("recipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User     @relation("actor", fields: [actorId], references: [id], onDelete: Cascade)
+  post      Post?    @relation(fields: [postId], references: [id])
+  comment   Comment? @relation(fields: [commentId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Story {
+  id        String    @id @default(cuid())
+  authorId  String
+  mediaUrl  String
+  mediaType MediaType
+  caption   String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId, expiresAt])
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+
+model Device {
+  id       String         @id @default(cuid())
+  userId   String
+  platform DevicePlatform
+  token    String         @unique
+  lastSeen DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
