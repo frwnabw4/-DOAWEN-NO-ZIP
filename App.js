@@ -5,12 +5,8 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { StatusBar } from "expo-status-bar";
 
-// غيّر هذا حسب جهازك:
-const API_BASE = Platform.select({
-  ios: "http://localhost:4000",
-  android: "http://10.0.2.2:4000",
-  default: "http://localhost:4000"
-});
+// الرابط الدائم الجديد للسيرفر:
+const API_BASE = "https://qawafi-server.onrender.com";
 
 // Helpers
 async function api(path, { method = "GET", token, body } = {}) {
@@ -260,25 +256,18 @@ function PostCard({ item, onLike, token }) {
       <Text style={s.user}>@{item.author.username}</Text>
       {item.title ? <Text style={s.title2}>{item.title}</Text> : null}
       <Text style={s.content}>{item.content}</Text>
-      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={{ width: "100%", height: 200, borderRadius: 8, marginVertical: 8 }} /> : null}
-      <View style={s.row}>
-        <TouchableOpacity onPress={onLike}>
-          <Text style={{ fontSize: 16 }}>{item.liked ? "❤️" : "🤍"} {item.counts.likes}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => { setShowComments(!showComments); if (!showComments) loadComments(); }}>
-          <Text style={{ color: "#2563eb" }}>تعليقات ({item.counts.comments})</Text>
-        </TouchableOpacity>
+      {item.imageUrl && <Image source={{ uri: item.imageUrl }} style={{ width: "100%", height: 200, borderRadius: 8, marginTop: 8 }} />}
+      <View style={s.actions}>
+        <TouchableOpacity onPress={onLike}><Text style={{ color: item.liked ? "red" : "#000" }}>❤️ {item.counts.likes}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={()=>{ setShowComments(!showComments); if(!showComments) loadComments(); }}><Text>💬 {item.counts.comments}</Text></TouchableOpacity>
       </View>
       {showComments && (
-        <View style={{ marginTop: 8 }}>
+        <View style={s.comments}>
           {comments.map(c => (
-            <View key={c.id} style={{ paddingVertical: 4 }}>
-              <Text style={{ color: "#555" }}>@{c.author?.username || "user"}:</Text>
-              <Text>{c.text}</Text>
-            </View>
+            <Text key={c.id} style={s.comment}><Text style={{ fontWeight: "bold" }}>{c.author.username}:</Text> {c.text}</Text>
           ))}
-          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-            <TextInput value={cText} onChangeText={setCText} placeholder="اكتب تعليقاً..." style={[s.input, { flex: 1, marginBottom: 0 }]} />
+          <View style={{ flexDirection: "row", gap: 4, marginTop: 4 }}>
+            <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="أضف تعليقاً..." value={cText} onChangeText={setCText} />
             <Button title="إرسال" onPress={sendComment} />
           </View>
         </View>
@@ -289,36 +278,29 @@ function PostCard({ item, onLike, token }) {
 
 function Search({ token }) {
   const [q, setQ] = useState("");
-  const [users, setUsers] = useState([]);
-
-  async function search() {
-    if (!q.trim()) return setUsers([]);
-    try { const j = await api(`/users/search?q=${encodeURIComponent(q)}`, { token }); setUsers(j); } catch {}
+  const [results, setResults] = useState([]);
+  async function doSearch() {
+    try { const j = await api(`/users/search?q=${encodeURIComponent(q)}`, { token }); setResults(j); } catch {}
   }
-  useEffect(()=>{ const t = setTimeout(search, 300); return ()=>clearTimeout(t); }, [q]);
-
   async function toggleFollow(u) {
     try {
-      if (u.isFollowing) {
-        await api(`/users/${u.id}/follow`, { method: "DELETE", token });
-        setUsers(prev => prev.map(x => x.id===u.id ? { ...x, isFollowing: false } : x));
-      } else {
-        await api(`/users/${u.id}/follow`, { method: "POST", token });
-        setUsers(prev => prev.map(x => x.id===u.id ? { ...x, isFollowing: true } : x));
-      }
+      await api(`/users/${u.id}/follow`, { method: u.isFollowing ? "DELETE" : "POST", token });
+      setResults(results.map(x => x.id===u.id ? { ...x, isFollowing: !u.isFollowing } : x));
     } catch {}
   }
-
   return (
     <View style={{ flex: 1 }}>
       <Text style={s.header}>استكشاف</Text>
-      <TextInput style={s.input} placeholder="ابحث عن شاعر…" value={q} onChangeText={setQ} />
+      <View style={{ flexDirection: "row", gap: 8, padding: 8 }}>
+        <TextInput style={[s.input, { flex: 1 }]} placeholder="ابحث عن شعراء..." value={q} onChangeText={setQ} />
+        <Button title="بحث" onPress={doSearch} />
+      </View>
       <FlatList
-        data={users}
-        keyExtractor={u=>u.id}
+        data={results}
+        keyExtractor={i => i.id}
         renderItem={({ item }) => (
-          <View style={s.card}>
-            <Text style={s.user}>@{item.username}</Text>
+          <View style={[s.row, { padding: 12, borderBottomWidth: 0.5, borderColor: "#ccc" }]}>
+            <Text>@{item.username}</Text>
             <Button title={item.isFollowing ? "إلغاء المتابعة" : "متابعة"} onPress={()=>toggleFollow(item)} />
           </View>
         )}
@@ -328,19 +310,17 @@ function Search({ token }) {
 }
 
 function Notifs({ token }) {
-  const [items, setItems] = useState([]);
-  async function load(){ try { const j = await api("/notifications", { token }); setItems(j); } catch {} }
-  useEffect(()=>{ load(); }, []);
+  const [list, setList] = useState([]);
+  useEffect(()=>{ api("/notifications", { token }).then(setList).catch(()=>{}); }, []);
   return (
     <View style={{ flex: 1 }}>
       <Text style={s.header}>الإشعارات</Text>
       <FlatList
-        data={items}
-        keyExtractor={(i)=>i.id}
+        data={list}
+        keyExtractor={i => i.id}
         renderItem={({ item }) => (
-          <View style={s.card}>
-            <Text> @{item.actor?.username} — {item.type === "LIKE" ? "أُعجب بمنشورك" : item.type === "COMMENT" ? "علّق على منشورك" : "بدأ بمتابعتك"} </Text>
-            <Text style={s.meta}>{new Date(item.createdAt).toLocaleString()}</Text>
+          <View style={{ padding: 12, borderBottomWidth: 0.5, borderColor: "#ccc" }}>
+            <Text><Text style={{ fontWeight: "bold" }}>@{item.actor.username}</Text> {item.type === "LIKE" ? "أعجب بمنشورك" : item.type === "FOLLOW" ? "بدأ بمتابعتك" : "علق على منشورك"}</Text>
           </View>
         )}
       />
@@ -350,97 +330,45 @@ function Notifs({ token }) {
 
 function Me({ token, onLogout }) {
   const [me, setMe] = useState(null);
-  const [bio, setBio] = useState("");
-  const [avatar, setAvatar] = useState(null);
-  const [myPosts, setMyPosts] = useState([]);
-
-  async function load(){
-    try {
-      const m = await api("/me", { token });
-      setMe(m); setBio(m?.bio || "");
-      const posts = await api(`/users/${m.id}/posts`, { token });
-      setMyPosts(posts);
-    } catch(e){ alert("تعذر تحميل ملفك"); }
-  }
-  useEffect(()=>{ load(); }, []);
-
-  async function changeAvatar(){
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return alert("نحتاج إذن للوصول للصور");
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
-    if (r.canceled) return;
-    try {
-      const url = await presignedUpload({ token, type: "image", fileUri: r.assets[0].uri, ext: "jpg" });
-      setAvatar({ uri: url });
-    } catch { alert("فشل رفع الصورة"); }
-  }
-
-  async function saveProfile(){
-    try {
-      await api("/me", { method: "PATCH", token, body: { bio, avatarUrl: avatar?.uri || me?.avatarUrl || null } });
-      alert("تم الحفظ ✅"); load();
-    } catch(e){ alert("فشل الحفظ"); }
-  }
-
-  if (!me) return <Text>...</Text>;
-
+  useEffect(()=>{ api("/me", { token }).then(setMe).catch(()=>{}); }, []);
+  if (!me) return null;
   return (
-    <View style={{ flex: 1 }}>
-      <View style={s.row}>
-        <Text style={s.header}>ملفي</Text>
-        <TouchableOpacity onPress={onLogout}><Text style={s.logout}>تسجيل الخروج</Text></TouchableOpacity>
-      </View>
-      <View style={s.card}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 999, backgroundColor: "#e5e7eb", overflow: "hidden", justifyContent: "center", alignItems: "center" }}>
-            {avatar?.uri || me.avatarUrl ? <Image source={{ uri: avatar?.uri || me.avatarUrl }} style={{ width: "100%", height: "100%" }} /> : <Text style={{ fontSize: 22 }}>{me.username.slice(0,1).toUpperCase()}</Text>}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: "700", fontSize: 18 }}>@{me.username}</Text>
-          </View>
-          <Button title="تغيير الصورة" onPress={changeAvatar} />
+    <View style={{ flex: 1, padding: 16 }}>
+      <Text style={s.header}>ملفي الشخصي</Text>
+      <View style={{ alignItems: "center", marginVertical: 20 }}>
+        <View style={[s.storyCircle, { width: 80, height: 80, borderRadius: 40 }]}>
+          <Text style={{ fontSize: 32, color: "#fff" }}>{me.username.slice(0,1).toUpperCase()}</Text>
         </View>
-        <TextInput style={[s.input, { marginTop: 10 }]} placeholder="نبذة عني…" value={bio} onChangeText={setBio} multiline />
-        <Button title="حفظ" onPress={saveProfile} />
+        <Text style={{ fontSize: 24, fontWeight: "bold", marginTop: 8 }}>@{me.username}</Text>
+        <Text style={{ color: "#666", marginTop: 4 }}>{me.bio || "لا يوجد نبذة شخصية"}</Text>
       </View>
-
-      <Text style={[s.header, { marginTop: 8 }]}>قصائدي</Text>
-      <FlatList
-        data={myPosts}
-        keyExtractor={p=>p.id}
-        renderItem={({ item }) => (
-          <View style={s.card}>
-            {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={{ width: "100%", height: 160, borderRadius: 8, marginBottom: 8 }} /> : null}
-            <Text style={s.content}>{item.content}</Text>
-            <Text style={s.meta}>❤️ {item.counts.likes} • 💬 {item.counts.comments}</Text>
-          </View>
-        )}
-      />
+      <Button title="تسجيل الخروج" color="red" onPress={onLogout} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#f8fafc" },
-  title: { fontSize: 20, marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10, marginBottom: 8, backgroundColor: "#fff" },
-  header: { fontSize: 22, fontWeight: "700", marginBottom: 8 },
-  logout: { color: "#e11d48", marginLeft: 10 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  compose: { marginBottom: 8 },
-  card: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, padding: 12, marginBottom: 10, backgroundColor: "#fff" },
-  user: { color: "#555", marginBottom: 6 },
-  title2: { fontSize: 16, fontWeight: "600", marginBottom: 4 },
-  content: { fontSize: 16, lineHeight: 22 },
-  meta: { color: "#888", marginTop: 6 },
-  tabs: { flexDirection: "row", gap: 8, justifyContent: "space-between", marginTop: 8 },
-  tab: { flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1", alignItems: "center", backgroundColor: "#fff" },
-  tabActive: { backgroundColor: "#0ea5e9", borderColor: "#0ea5e9" },
-  tabText: { color: "#0f172a", fontWeight: "600" },
-  tabTextActive: { color: "#fff" },
-  story: { alignItems: "center", marginRight: 12 },
-  storyCircle: { width: 56, height: 56, borderRadius: 999, backgroundColor: "#0ea5e9", justifyContent: "center", alignItems: "center", marginBottom: 4 },
-  storyName: { fontSize: 12, color: "#334155" },
-  modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,.5)", justifyContent: "center", alignItems: "center" },
-  modalCard: { backgroundColor: "#111827", padding: 12, borderRadius: 12, alignItems: "center", gap: 8 }
+  container: { flex: 1, backgroundColor: "#f9f9f9", paddingHorizontal: 10 },
+  title: { fontSize: 24, fontWeight: "bold", textAlign: "center", marginVertical: 20 },
+  header: { fontSize: 22, fontWeight: "bold", marginVertical: 10, paddingHorizontal: 8 },
+  input: { borderWidth: 1, borderColor: "#ddd", padding: 12, borderRadius: 8, backgroundColor: "#fff", marginBottom: 12 },
+  card: { backgroundColor: "#fff", padding: 12, borderRadius: 10, marginBottom: 12, elevation: 2, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4 },
+  user: { fontWeight: "bold", color: "#333", marginBottom: 4 },
+  title2: { fontSize: 16, fontWeight: "bold", marginBottom: 4 },
+  content: { fontSize: 15, lineHeight: 22 },
+  actions: { flexDirection: "row", gap: 20, marginTop: 10, borderTopWidth: 0.5, borderColor: "#eee", paddingTop: 8 },
+  tabs: { flexDirection: "row", borderTopWidth: 1, borderColor: "#eee", backgroundColor: "#fff", paddingBottom: Platform.OS === "ios" ? 20 : 0 },
+  tab: { flex: 1, alignItems: "center", padding: 12 },
+  tabActive: { borderTopWidth: 2, borderColor: "#007AFF" },
+  tabText: { color: "#888", fontSize: 12 },
+  tabTextActive: { color: "#007AFF", fontWeight: "bold" },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 8 },
+  compose: { backgroundColor: "#fff", padding: 12, borderRadius: 10, marginBottom: 12, borderBottomWidth: 1, borderColor: "#eee" },
+  story: { alignItems: "center", marginRight: 12, width: 70 },
+  storyCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#007AFF", justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "#fff" },
+  storyName: { fontSize: 10, marginTop: 4, color: "#333" },
+  modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" },
+  modalCard: { alignItems: "center", gap: 20 },
+  comments: { marginTop: 10, padding: 8, backgroundColor: "#f0f0f0", borderRadius: 8 },
+  comment: { fontSize: 13, marginBottom: 4 }
 });
